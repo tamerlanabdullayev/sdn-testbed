@@ -5,6 +5,7 @@ __pycache__/
 # Virtualenvs
 venv/
 venv_py310/
+venv_osken_py310/
 .venv/
 
 # Ryu source trees and tarballs (installed from the upstream tarball; see README)
@@ -12,36 +13,23 @@ ryu/
 ryu-4.34/
 v4.34.tar.gz*
 
-
 # Logs (run logs, sweep logs, smoke tests)
 *.log
 
+# Results: keep the paper's summary, figures and sweep records.
+# Raw per-run outputs and any other results folder (smoke tests, trial
+# sweeps) stay local.
+results*/
+!results_v4/
+results_v4/*
+!results_v4/summary/
+!results_v4/figures_paper/
+!results_v4/sweeps/
 
+# Local code snapshots
+code_snapshot_*.tar.gz
 
-
-
-
-
-# Superseded analysis scripts (analysis/plots_v4.py is the current one)
-analysis/plots.py
-analysis/plots_v2.py
-analysis/plots_v3.py
-analysis/plots_comparison.py
-analysis/temp.py
-
-# Results: keep only the paper data and the final figures.
-# Raw per-run outputs, older summaries and older figure sets stay local.
-results/*
-!results/summary/
-results/summary/*
-!results/summary/summary_v2.csv
-!results/summary/cpu_recomputed.csv
-!results/figures_v4/
-# old throughput metric; kept locally, not released
-results/figures_v4/fig3_throughput_interaction.*
-
-results_osken/*
-!results_osken/summary/
-results_osken/summary/*
-!results_osken/summary/summary_v2.csv
-!results_osken/summary/cpu_recomputed.csv
+# Downloaded controller distributions (ONOS); see docs/ADAPTER.md Part 4
+third_party/
+# ONOS app build output (scripts/setup_onos.sh rebuilds it)
+controller/onos-instrumented-l2/target/

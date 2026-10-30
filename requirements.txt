@@ -1,5 +1,6 @@
-# Python 3.10 virtualenv used for the published sweep (pip freeze, 2026-10-16).
-# Runs: Ryu controller, psutil monitor, aggregator, plotting.
+# Python 3.10 virtualenv venv_py310 (pip freeze, 2026-10-16; unchanged for the
+# results_v4 sweep). Runs: Ryu controller, orchestrator, psutil monitor,
+# aggregator, plotting.
 #
 # NOT installable from this file alone:
 #   ryu==4.34  must be installed from the patched source tarball
@@ -9,8 +10,10 @@
 # System-level (apt, not pip) -- see README.md and docs/ENVIRONMENT.md:
 #   mininet 2.3.0          (runs under sudo with /usr/bin/python3)
 #   openvswitch-switch 3.3.4
-#   iperf3 3.16
-#   python3-os-ken 2.8.1   (OS-Ken runs used /usr/bin/osken-manager, system Python 3.12)
+#   iperf3 3.16, tcpdump
+#
+# OS-Ken runs in its own virtualenv: requirements-osken.txt (venv_osken_py310).
+# ONOS (Java) is installed by scripts/setup_onos.sh.
 #
 # os-ken 4.2.2 was present in the virtualenv but not used for any
 # measurement, so it is omitted.

@@ -1,0 +1,95 @@
+{
+  "started": 1793376873.0690484,
+  "args": {
+    "controllers": [
+      "onos"
+    ],
+    "topos": [
+      "star",
+      "tree"
+    ],
+    "hosts": [
+      4,
+      8,
+      16,
+      32,
+      64
+    ],
+    "fps": [
+      25,
+      50,
+      100,
+      200
+    ],
+    "reps": 10,
+    "total_time": 20,
+    "flow_duration": 2,
+    "controller_cpus": "3",
+    "workload_cpus": "0-2",
+    "warmup_rounds": 1,
+    "fq_rate": "2M",
+    "host_bw": "0",
+    "no_capture": false,
+    "results_root": "<HOME>/Desktop/sdn-testbed opendaylight/results_v4",
+    "no_resume": false,
+    "dry_run": false,
+    "smoke": false
+  },
+  "environment": {
+    "hostname": "testbed-vm",
+    "kernel": "7.0.0-38-generic",
+    "os": "Ubuntu 24.04.2 LTS",
+    "cpus": 4,
+    "cpu_model": "13th Gen Intel(R) Core(TM) i7-13700F",
+    "mem_total": "MemTotal:       16372584 kB",
+    "ovs": "ovs-vsctl (Open vSwitch) 3.3.4",
+    "mininet": "2.3.0",
+    "iperf3": "iperf 3.16 (cJSON 1.7.15)",
+    "tcpdump": "tcpdump version 4.99.4",
+    "git_commit": "9c9ca96d00a8459517b9f914dc5886f6fb8a89d7",
+    "git_dirty": true,
+    "code_hash": "b5ac8d4b7a5dac7316dfaff9e8aa07ecc7e55286fc7065d4b1335e38ae75091c",
+    "controllers": {
+      "onos": {
+        "controller": "onos",
+        "framework_version": "2.7.0",
+        "java_version": "openjdk version \"11.0.32.1\" 2026-08-18",
+        "runtime": "OpenJDK 11.0.32.1",
+        "jvm_heap": "2g",
+        "onos_home": "<HOME>/.local/opt/onos-2.7.0",
+        "fresh_data": true,
+        "gc_log": false,
+        "debug_loggers": "",
+        "app_file": "controller/onos-instrumented-l2",
+        "app_sha256": "b62f0685b0d468415ed503e1d67aef2f728d55d8fdfce7555579eb68149c0720"
+      }
+    }
+  },
+  "runs": [
+    {
+      "controller": "onos",
+      "topo": "star",
+      "n": 4,
+      "fps": 100,
+      "rep": 10,
+      "seed": 1150,
+      "run_id": "STAR_N4_F100_R10",
+      "exit": 0,
+      "wall_s": 67.9,
+      "code_hash": "b5ac8d4b7a5dac7316dfaff9e8aa07ecc7e55286fc7065d4b1335e38ae75091c"
+    },
+    {
+      "controller": "onos",
+      "topo": "tree",
+      "n": 4,
+      "fps": 50,
+      "rep": 8,
+      "seed": 2098,
+      "run_id": "FATTREE_N4_F50_R8",
+      "exit": 0,
+      "wall_s": 67.8,
+      "code_hash": "b5ac8d4b7a5dac7316dfaff9e8aa07ecc7e55286fc7065d4b1335e38ae75091c"
+    }
+  ],
+  "finished": 1793377009.4455261
+}

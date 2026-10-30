@@ -10,7 +10,7 @@ from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parents[1]))
 
 from mininet.net import Mininet
-from mininet.node import Host, RemoteController, OVSSwitch
+from mininet.node import Host, RemoteController
 from mininet.log import setLogLevel
 from mininet.link import TCLink
 
@@ -19,11 +19,16 @@ from topology.fat_tree_topo import FatTreeTopo
 from topology.mesh_topo import MeshTopo
 
 from iperf_pool import PORT_BASE, PortPool, pool_size
+from of13_switch import OF13Switch, OF_PROTOCOLS
 
 
 # "tree" is the documented name of the two-tier tree; data keep recording
 # "fattree" so existing run IDs, summaries and plots stay consistent.
 TOPO_ALIASES = {"tree": "fattree"}
+
+# A run whose switches never reach the controller measures nothing; abort it
+# (exit code below) so no summary row is written and a sweep can retry it.
+SWITCH_CONNECT_EXIT = 3
 
 
 def canonical_topo(topo_name):
@@ -126,12 +131,17 @@ def main():
     ap.add_argument("--server_min", type=int, default=4)
     ap.add_argument("--server_cap", type=int, default=320)
     ap.add_argument("--server_ready_timeout", type=float, default=30.0)
+    ap.add_argument("--switch_connect_timeout", type=float, default=30.0,
+                    help="Seconds to wait for every switch to connect to the "
+                         "controller before aborting the run")
     ap.add_argument("--host_bw", type=float, default=0.0,
                     help="TCLink bandwidth (Mbit/s) on host-switch links, "
                          "enforced by kernel tc/HTB; 0 = no limit, max 1000")
     ap.add_argument("--fq_rate", type=str, default="2M",
                     help="Per-flow iperf3 --fq-rate (kernel socket pacing), "
                          "e.g. 2M; 0 = unpaced")
+    ap.add_argument("--code_hash", default="",
+                    help="scripts/code_hash.py value of the run (recorded only)")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -165,6 +175,8 @@ def main():
         "port_hold_s": hold_s,
         "host_bw_mbit": args.host_bw,
         "fq_rate": args.fq_rate,
+        "of_protocols": OF_PROTOCOLS,
+        "code_hash": args.code_hash,
     })
     with open(outdir / "traffic_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
@@ -179,7 +191,7 @@ def main():
     net = Mininet(
         topo=topo,
         controller=None,
-        switch=OVSSwitch,
+        switch=OF13Switch,
         link=TCLink,
         autoSetMacs=True,
         autoStaticArp=True,
@@ -193,7 +205,19 @@ def main():
         port=args.controller_port,
     )
     net.start()
+    switches_connected = net.waitConnected(timeout=args.switch_connect_timeout)
+    meta["switches_connected"] = switches_connected
     phase.end("mininet_start")
+    if not switches_connected:
+        missing = [s.name for s in net.switches if not s.connected()]
+        meta["switches_not_connected"] = missing
+        with open(outdir / "traffic_meta.json", "w") as f:
+            json.dump(meta, f, indent=2)
+        print(f"[ERROR] switches not connected to the controller after "
+              f"{args.switch_connect_timeout}s: {', '.join(missing)}; aborting run",
+              file=sys.stderr, flush=True)
+        net.stop()
+        sys.exit(SWITCH_CONNECT_EXIT)
 
     hosts = [net.get(f"h{i}") for i in range(1, args.n + 1)]
 

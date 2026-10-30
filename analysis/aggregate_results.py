@@ -18,6 +18,21 @@ Throughput columns:
                             successful flows. Flows started in the last
                             flow_duration seconds finish after total_time, so
                             this slightly overstates the rate within the window.
+
+Traffic-window columns (*_traffic): averaged over traffic_launch start ->
+client_drain end (phase_times), the same window for every controller. The
+older avg_packet_in_rate / avg_cpu_percent / avg_mem_mb average from
+measure_start to the last controller sample, so a controller that shuts down
+more slowly adds more idle seconds to them.
+
+code_hash: scripts/code_hash.py's SHA-256 of the testbed code at the start of
+the run (traffic_meta.json); runs with different values ran different code.
+
+wire_clean_*: wire_latency_* without "ambiguous" Packet-Ins: answered ones for
+which a later Packet-In with the same (dpid, in_port, src, dst) arrived before
+the reply and was never answered. The wire matcher pairs identical packets
+first-in-first-out, so when a controller drops a Packet-In and answers a later
+byte-identical repeat (e.g. mDNS), the earlier one gets the later reply.
 """
 
 import argparse
@@ -40,7 +55,13 @@ def parse_args():
 # Readers
 # ---------------------------------------------------------------------------
 
-def read_controller_metrics(rundir: Path):
+def _after(row, since_ts):
+    """True if the row belongs to the measured part of the run. since_ts is
+    controller_meta.json's measure_start_ts (set only when a warm-up ran)."""
+    return since_ts is None or float(row["ts_wall"]) >= since_ts
+
+
+def read_controller_metrics(rundir: Path, since_ts=None):
     """Returns avg packet_in_rate and avg flow_mod_rate (counts per second)."""
     path = rundir / "controller_metrics.csv"
     if not path.exists():
@@ -50,6 +71,8 @@ def read_controller_metrics(rundir: Path):
         reader = csv.DictReader(f)
         for row in reader:
             try:
+                if not _after(row, since_ts):
+                    continue
                 rows.append({
                     "packet_in_count": float(row["packet_in_count"]),
                     "flow_mod_count":  float(row["flow_mod_count"]),
@@ -63,7 +86,7 @@ def read_controller_metrics(rundir: Path):
     return avg_pi, avg_fm
 
 
-def read_flow_events(rundir: Path):
+def read_flow_events(rundir: Path, since_ts=None):
     """Returns p50 and p95 of proc_time_ms."""
     path = rundir / "flow_events.csv"
     if not path.exists():
@@ -73,6 +96,8 @@ def read_flow_events(rundir: Path):
         reader = csv.DictReader(f)
         for row in reader:
             try:
+                if not _after(row, since_ts):
+                    continue
                 times.append(float(row["proc_time_ms"]) if row["proc_time_ms"] not in (None, "", "None") else None)
             except (KeyError, ValueError):
                 continue
@@ -88,7 +113,7 @@ def read_flow_events(rundir: Path):
     return p50, p95
 
 
-def read_system_metrics(rundir: Path):
+def read_system_metrics(rundir: Path, since_ts=None):
     """Returns avg CPU (%) and avg memory (MB)."""
     path = rundir / "system_metrics.csv"
     if not path.exists():
@@ -98,6 +123,8 @@ def read_system_metrics(rundir: Path):
         reader = csv.DictReader(f)
         for row in reader:
             try:
+                if not _after(row, since_ts):
+                    continue
                 cpu_vals.append(float(row["cpu_percent"]))
                 mem_vals.append(float(row["rss_bytes"]) / (1024 * 1024))  # convert to MB
             except (KeyError, ValueError):
@@ -113,6 +140,143 @@ def read_traffic_meta(rundir: Path):
         return {}
     with open(path) as f:
         return json.load(f)
+
+
+def read_controller_meta(rundir: Path):
+    path = rundir / "controller_meta.json"
+    if not path.exists():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def read_wire_summary(rundir: Path):
+    path = rundir / "wire_summary.json"
+    if not path.exists():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def read_traffic_window(rundir: Path):
+    """(start, end) epoch of traffic_launch start -> client_drain end, or None.
+    Read from phase_times.tsv during a run (phase_times.py merges it into
+    phase_times.json only after aggregation) or from phase_times.json."""
+    marks = {}
+    tsv, js = rundir / "phase_times.tsv", rundir / "phase_times.json"
+    if tsv.exists():
+        with open(tsv) as f:
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) == 3:
+                    try:
+                        marks[(parts[0], parts[1])] = float(parts[2])
+                    except ValueError:
+                        pass
+    elif js.exists():
+        with open(js) as f:
+            for p in json.load(f).get("phases", []):
+                for k in ("start", "end"):
+                    if p.get(k) is not None:
+                        marks[(p["name"], k)] = float(p[k])
+    start, end = marks.get(("traffic_launch", "start")), marks.get(("client_drain", "end"))
+    return (start, end) if start is not None and end is not None and end > start else None
+
+
+def _csv_times(path: Path, ts_col):
+    if not path.exists():
+        return None
+    out = []
+    with open(path) as f:
+        for row in csv.DictReader(f):
+            try:
+                out.append(float(row[ts_col]))
+            except (KeyError, ValueError):
+                continue
+    return out
+
+
+def read_traffic_window_metrics(rundir: Path, window):
+    """Packet-In rates, controller CPU and RSS within the traffic window."""
+    out = {}
+    if window is None:
+        return out
+    start, end = window
+    dur = end - start
+    out["traffic_window_s"] = dur
+    inside = lambda ts: start < ts <= end
+    handled = _csv_times(rundir / "flow_events.csv", "ts_wall")
+    if handled is not None:
+        out["packet_in_rate_traffic"] = sum(map(inside, handled)) / dur
+    sent = _csv_times(rundir / "wire_events.csv", "ts_packet_in")
+    if sent is not None:
+        out["wire_packet_in_rate_traffic"] = sum(map(inside, sent)) / dur
+    path = rundir / "system_metrics.csv"
+    if path.exists():
+        cpu, mem = [], []
+        with open(path) as f:
+            for row in csv.DictReader(f):
+                try:
+                    if inside(float(row["ts_wall"])):
+                        cpu.append(float(row["cpu_percent"]))
+                        mem.append(float(row["rss_bytes"]) / (1024 * 1024))
+                except (KeyError, ValueError):
+                    continue
+        if cpu:
+            out["cpu_percent_traffic"] = sum(cpu) / len(cpu)
+            out["mem_mb_traffic"] = sum(mem) / len(mem)
+    return out
+
+
+def _pct(values, q):
+    """Same convention as read_flow_events and openflow_latency.pct."""
+    v = sorted(values)
+    return v[min(int(len(v) * q), len(v) - 1)] if v else None
+
+
+def read_wire_clean(rundir: Path):
+    """wire_latency p50/p95 without ambiguous Packet-Ins (see module docstring)."""
+    path = rundir / "wire_events.csv"
+    if not path.exists():
+        return {}
+    by_key = {}
+    with open(path) as f:
+        for row in csv.DictReader(f):
+            if row["kind"] == "no_ethernet":
+                continue
+            key = (row["dpid"], row["in_port"], row["src_mac"], row["dst_mac"])
+            last = float(row["wire_last_ms"]) if row["wire_last_ms"] else None
+            by_key.setdefault(key, []).append((float(row["ts_packet_in"]), row["kind"], last))
+    clean, ambiguous = [], 0
+    for evs in by_key.values():
+        evs.sort()
+        for i, (ts, kind, last) in enumerate(evs):
+            if last is None:
+                continue
+            reply = ts + last / 1000
+            if any(k == "unmatched" and t < reply for t, k, _ in evs[i + 1:]):
+                ambiguous += 1
+            else:
+                clean.append(last)
+    return {"wire_ambiguous": ambiguous,
+            "wire_clean_p50_ms": _pct(clean, 0.50),
+            "wire_clean_p95_ms": _pct(clean, 0.95)}
+
+
+def traffic_and_clean_columns(rundir: Path):
+    """The *_traffic and wire_clean_* summary columns of one run."""
+    vals = {**read_traffic_window_metrics(rundir, read_traffic_window(rundir)),
+            **read_wire_clean(rundir)}
+    out = {}
+    for col in TRAFFIC_COLUMNS:
+        v = vals.get(col)
+        out[col] = ("" if v is None else v if isinstance(v, int) else
+                    round(v, 2) if col in ("cpu_percent_traffic", "mem_mb_traffic") else round(v, 4))
+    return out
+
+
+def _r4(v):
+    return round(v, 4) if isinstance(v, (int, float)) else ""
 
 
 def read_iperf_jsons(rundir: Path):
@@ -234,7 +398,39 @@ SUMMARY_COLUMNS = [
     "fq_rate",
     "actual_launch_duration_s",
     "achieved_fps",
+    # --- v3 columns (multi-controller; from controller_meta.json) ---
+    "controller",
+    "controller_version",
+    "controller_runtime",
+    "ready_time_s",
+    "controller_cpus",
+    "workload_cpus",
+    "warmup_rounds",
+    # --- wire-level latency (from wire_summary.json; analysis/openflow_latency.py) ---
+    "wire_packet_ins",
+    "wire_matched",
+    "wire_unmatched",
+    "wire_latency_p50_ms",
+    "wire_latency_p95_ms",
+    "wire_first_p50_ms",
+    "wire_first_p95_ms",
+    "pcap_dropped",
 ]
+# --- traffic-window and clean wire columns (see module docstring) ---
+TRAFFIC_COLUMNS = [
+    "traffic_window_s",
+    "packet_in_rate_traffic",
+    "wire_packet_in_rate_traffic",
+    "cpu_percent_traffic",
+    "mem_mb_traffic",
+    "wire_ambiguous",
+    "wire_clean_p50_ms",
+    "wire_clean_p95_ms",
+]
+SUMMARY_COLUMNS += TRAFFIC_COLUMNS
+# --- code version (scripts/code_hash.py, from traffic_meta.json) ---
+CODE_COLUMNS = ["code_hash"]
+SUMMARY_COLUMNS += CODE_COLUMNS
 
 
 class SummaryHeaderMismatch(Exception):
@@ -250,7 +446,7 @@ def append_summary(summary_path: Path, row: dict):
             raise SummaryHeaderMismatch(
                 f"{summary_path} has a different header "
                 f"({len(header)} columns, expected {len(SUMMARY_COLUMNS)}); "
-                "refusing to append. Use a new summary file (e.g. summary_v2.csv).")
+                "refusing to append. Use a new summary file or results root.")
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     with open(summary_path, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=SUMMARY_COLUMNS, extrasaction="ignore")
@@ -276,6 +472,8 @@ def main():
 
     # Parse run_id: expected format N{n}_F{fps}_R{rep}
     meta = read_traffic_meta(rundir)
+    cmeta = read_controller_meta(rundir)
+    wire = read_wire_summary(rundir)
     n_hosts       = meta.get("n", None)
     flows_per_sec = meta.get("flows_per_sec", None)
     total_time    = meta.get("total_time", None)
@@ -293,9 +491,10 @@ def main():
                 pass
 
     # Collect metrics
-    avg_pi, avg_fm          = read_controller_metrics(rundir)
-    p50, p95                = read_flow_events(rundir)
-    avg_cpu, avg_mem        = read_system_metrics(rundir)
+    since = cmeta.get("measure_start_ts")   # None unless a warm-up ran
+    avg_pi, avg_fm          = read_controller_metrics(rundir, since)
+    p50, p95                = read_flow_events(rundir, since)
+    avg_cpu, avg_mem        = read_system_metrics(rundir, since)
     total_bps, retrans, fc  = read_iperf_jsons(rundir)
     outcomes                = classify_iperf_jsons(rundir)
 
@@ -348,6 +547,23 @@ def main():
         "fq_rate":              meta.get("fq_rate", ""),
         "actual_launch_duration_s": meta.get("actual_launch_duration_s", ""),
         "achieved_fps":         meta.get("achieved_fps", ""),
+        "controller":           cmeta.get("controller", ""),
+        "controller_version":   cmeta.get("framework_version", ""),
+        "controller_runtime":   cmeta.get("runtime", ""),
+        "ready_time_s":         cmeta.get("ready_time_s", ""),
+        "controller_cpus":      cmeta.get("controller_cpus", ""),
+        "workload_cpus":        cmeta.get("workload_cpus", ""),
+        "warmup_rounds":        cmeta.get("warmup_rounds", ""),
+        "wire_packet_ins":      wire.get("packet_ins", ""),
+        "wire_matched":         wire.get("matched", ""),
+        "wire_unmatched":       wire.get("unmatched_packet_in", ""),
+        "wire_latency_p50_ms":  _r4(wire.get("wire_last_p50_ms")),
+        "wire_latency_p95_ms":  _r4(wire.get("wire_last_p95_ms")),
+        "wire_first_p50_ms":    _r4(wire.get("wire_first_p50_ms")),
+        "wire_first_p95_ms":    _r4(wire.get("wire_first_p95_ms")),
+        "pcap_dropped":         wire.get("tcpdump_dropped_by_kernel", ""),
+        **traffic_and_clean_columns(rundir),
+        "code_hash":            meta.get("code_hash") or cmeta.get("code_hash", ""),
     }
 
     try:

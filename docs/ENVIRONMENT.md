@@ -1,82 +1,45 @@
 # Measurement environment
 
-Software versions used for the published sweep (800 runs: Ryu and OS-Ken,
-star and two-tier tree), recorded on 2026-10-16 from the measurement machine.
+Software and machine used for `results_v4` (1200 runs: Ryu, OS-Ken and ONOS,
+star and two-tier tree; sweep 2026-10-29/30). Machine, OS and tool versions are
+from the sweep record `results_v4/sweeps/sweep_20261029_141522.json`
+(`environment`); controller versions are also recorded per run in
+`controller_meta.json` and the summary (`controller_version`,
+`controller_runtime`).
 
 ## Host
 
 | Component | Version |
 |---|---|
+| Machine | VirtualBox VM, 4 vCPUs (host CPU: 13th Gen Intel Core i7-13700F), 16 GB RAM |
 | OS | Ubuntu 24.04.2 LTS |
 | Kernel | 7.0.0-38-generic |
-| Open vSwitch | 3.3.4 (apt `openvswitch-switch` 3.3.4-0ubuntu0.24.04.1) |
-| Mininet | 2.3.0 (apt `mininet` 2.3.0-1.1), run with system `/usr/bin/python3` under sudo |
-| iperf3 | 3.16 (apt `iperf3` 3.16-1build2, cJSON 1.7.15) |
+| Open vSwitch | 3.3.4 |
+| Mininet | 2.3.0, run with system `/usr/bin/python3` (3.12.3) under sudo |
+| iperf3 | 3.16 (cJSON 1.7.15) |
+| tcpdump | 4.99.4 |
+| Pinning | controller on CPU 3; Mininet, iperf3, warm-up and tcpdump on CPUs 0–2; one warm-up round (16 hosts) |
 
-## Controllers: the two ran on different interpreters
+## Controllers
 
-| | Ryu runs | OS-Ken runs |
-|---|---|---|
-| Launcher | `ryu-manager` from virtualenv `venv_py310` | `/usr/bin/osken-manager` (apt `python3-os-ken`) |
-| Python | **3.10.19** | **3.12.3** (system) |
-| Framework | ryu 4.34 (source install, patched; see README) | os-ken **2.8.1** |
-| eventlet | 0.33.3 | 0.35.2 (apt `python3-eventlet` 0.35.2-0ubuntu1.1) |
-| greenlet | 3.3.1 | 3.0.3 |
-| dnspython | 2.1.0 | 2.6.1 |
-| msgpack | 1.1.2 | 1.0.3 |
-| oslo.config | 10.2.0 | 9.4.0 |
-| netaddr | 1.3.0 | 0.8.0 |
-| ovs (Python bindings) | 3.6.1 | 3.3.4 |
-| tinyrpc | 1.1.7 | 0.6 |
-| webob / routes / six | 1.8.9 / 2.5.1 / 1.17.0 | 1.8.7 / 2.5.1 / 1.16.0 |
+| | Ryu | OS-Ken | ONOS |
+|---|---|---|---|
+| Framework | ryu 4.34 (source install, patched; see README) | os-ken 2.8.1 | ONOS 2.7.0 (release tarball, Karaf 4.2.9; `scripts/setup_onos.sh`) |
+| Runtime | CPython 3.10.19 (`venv_py310`) | CPython 3.10.19 (`venv_osken_py310`) | OpenJDK 11.0.32.1, `-Xms2g -Xmx2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200` |
+| Python packages | `requirements.txt` | `requirements-osken.txt` | — |
+| eventlet / greenlet / dnspython | 0.33.3 / 3.3.1 / 2.1.0 | 0.33.3 / 3.3.1 / 2.1.0 | — |
+| App | `controller/ryu_instrumented_switch.py` | `controller/osken_instrumented_switch.py` | `controller/onos-instrumented-l2` 1.0.0, built with Maven 3.8.7 against `onos-dependencies` 2.7.0; OAR SHA-256 `b62f0685b0d468415ed503e1d67aef2f728d55d8fdfce7555579eb68149c0720` (`app_sha256`) |
+| Active apps | — | — | `drivers`, `openflow-base`, `optical-model`, `org.sdntestbed.instrumentedl2` (no LLDP/BDDP link discovery, no host provider) |
 
-**Interpretation.** OS-Ken measured ~17% lower p50 handler time than Ryu. The
-two controllers share the same application logic (see `docs/ADAPTER.md`), but
-the comparison is confounded: OS-Ken ran on CPython 3.12, which is generally
-faster than 3.10 for pure-Python code like this handler, and with a newer
-eventlet. The difference should not be attributed to the frameworks alone.
+Ryu and OS-Ken run on the same interpreter and the same eventlet, greenlet and
+dnspython versions, so they differ only in the framework.
 
-Notes:
-- `venv_py310` also contains os-ken 4.2.2, but it was **not** used: the
-  virtualenv has no `osken-manager` entry point, so `PATH` resolves to the
-  system `/usr/bin/osken-manager` (`#!/usr/bin/python3`), which imports
-  `/usr/lib/python3/dist-packages/os_ken`. This is inferred from `PATH`
-  resolution on the measurement machine; per-run controller logs were deleted by
-  the cleanup step.
-- On the measurement machine the working copy's `venv_py310/bin/activate`
-  points to the original checkout's virtualenv
-  (`/home/tamerlan/Desktop/sdn-paper1/venv_py310`); its package set is identical
-  to the table above.
+The orchestrator, monitor, aggregator and plotting scripts run in
+`venv_py310` (pandas 2.3.3, numpy 2.2.6, matplotlib 3.10.8, psutil 7.2.2;
+full list in `requirements.txt`).
 
-## Monitoring and analysis (virtualenv Python 3.10.19)
+## Code
 
-| Package | Version | Used by |
-|---|---|---|
-| psutil | 7.2.2 | `scripts/log_system_metrics.py` (both controllers) |
-| pandas | 2.3.3 | `analysis/plots_v4.py` |
-| numpy | 2.2.6 | `analysis/plots_v4.py` |
-| matplotlib | 3.10.8 | `analysis/plots_v4.py` |
-
-The system Python has no psutil; the run scripts call the monitor and the
-aggregator with the virtualenv's `python3` (`PYBIN` after activation).
-
-## Reproducing this listing
-
-```bash
-# Controller / monitoring virtualenv
-venv_py310/bin/python3 -c 'import sys, importlib.metadata as m; print(sys.version)
-for p in ("ryu","os-ken","eventlet","greenlet","psutil","pandas","numpy","matplotlib"):
-    print(p, m.version(p))'
-
-# System Python (OS-Ken, Mininet)
-/usr/bin/python3 -c 'import sys, importlib.metadata as m; print(sys.version)
-for p in ("os-ken","eventlet","greenlet","mininet"):
-    print(p, m.version(p))'
-head -1 "$(command -v osken-manager)"
-
-# System tools
-ovs-vsctl --version | head -1
-iperf3 --version | head -1
-dpkg -l mininet openvswitch-switch iperf3 python3-os-ken python3-eventlet | awk '/^ii/{print $2, $3}'
-uname -r; lsb_release -ds
-```
+All 1200 runs: `code_hash` =
+`b5ac8d4b7a5dac7316dfaff9e8aa07ecc7e55286fc7065d4b1335e38ae75091c`
+(see README, "Paper results").

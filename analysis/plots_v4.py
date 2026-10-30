@@ -2,17 +2,20 @@
 """
 plots_v4.py — Print-size figures and LaTeX tables for the ICC 2027 testbed paper.
 
-Built on the style of plots.py / plots_v3.py, with these changes:
-  * reads the v2 pipeline output (summary_v2.csv) for Ryu and, optionally, OS-Ken
+Provides the figure style and the figure/table functions that
+analysis/plots_paper_v3.py uses for the paper (results_v4). Run on its own:
+  * reads one summary.csv as Ryu and, optionally, a second one as OS-Ken; it
+    does not filter by the controller column (use plots_paper_v3.py for
+    results_v4, which holds all three controllers)
   * figures are drawn at IEEE single-column print size (3.5 in wide, 8 pt fonts),
     so LaTeX does not shrink them
   * error bars are 95% confidence intervals of the mean (t-distribution),
     clipped at zero so they never go negative
   * labels use "Two-tier tree" (the topology id in the data is still "fattree")
   * smoke-test rows and runs below a success-rate threshold are excluded (reported)
-  * controller CPU uses avg_cpu_percent_nofirst from cpu_recomputed.csv (written by
-    analysis/recompute_cpu.py next to each summary_v2.csv): each run's first
-    monitor sample is dropped. Falls back to avg_cpu_percent with a warning.
+  * controller CPU uses avg_cpu_percent_nofirst from an optional per-run CPU
+    file (columns run_id, avg_cpu_percent_nofirst; --cpu / --osken-cpu), else
+    avg_cpu_percent with a warning. plots_paper_v3.py uses cpu_percent_traffic.
 
 Outputs (in --outdir):
   fig_latency_vs_fps.{pdf,png}        p50/p95 handler time vs flow rate at fixed N (default 64)
@@ -23,9 +26,8 @@ Outputs (in --outdir):
 
 Usage:
   python3 analysis/plots_v4.py \
-      --summary results/summary/summary_v2.csv \
-      --osken   results_osken/summary/summary_v2.csv \
-      --outdir  results/figures_v4
+      --summary <summary.csv> [--osken <summary.csv>] --outdir <dir>
+  (paper figures: analysis/plots_paper_v3.py)
 """
 
 import argparse
@@ -92,7 +94,7 @@ CPU_COL = "cpu_pct"   # controller CPU used for all CPU statistics (see load_cpu
 
 
 def load_cpu(df, cpu_path, controller):
-    """Adds CPU_COL: avg_cpu_percent_nofirst from cpu_recomputed.csv, or
+    """Adds CPU_COL: avg_cpu_percent_nofirst from the per-run CPU file, or
     avg_cpu_percent (with a warning) where the file or a run is missing."""
     if cpu_path and os.path.exists(cpu_path):
         cpu = pd.read_csv(cpu_path, usecols=["run_id", "avg_cpu_percent_nofirst"])
@@ -105,8 +107,8 @@ def load_cpu(df, cpu_path, controller):
         print(f"  {controller}: CPU from {cpu_path} (first sample dropped)")
     else:
         print(f"  [WARN] {controller}: {cpu_path} not found; CPU statistics use "
-              f"avg_cpu_percent, which includes the first-sample artifact "
-              f"(run analysis/recompute_cpu.py)")
+              f"avg_cpu_percent (for results_v4, the CPU column to use is "
+              f"cpu_percent_traffic, as in analysis/plots_paper_v3.py)")
         df[CPU_COL] = df["avg_cpu_percent"]
     return df
 
@@ -325,13 +327,13 @@ def paper_numbers(ryu, osken, outdir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--summary", default="results/summary/summary_v2.csv")
-    ap.add_argument("--osken",   default=None, help="OS-Ken summary_v2.csv (optional)")
+    ap.add_argument("--summary", default="results_v4/summary/summary.csv")
+    ap.add_argument("--osken",   default=None, help="second summary.csv, plotted as OS-Ken (optional)")
     ap.add_argument("--outdir",  default="results/figures_v4")
     ap.add_argument("--cpu", default=None,
-                    help="cpu_recomputed.csv for Ryu (default: next to --summary)")
+                    help="per-run CPU file for Ryu (optional; default: looked up next to --summary)")
     ap.add_argument("--osken-cpu", default=None,
-                    help="cpu_recomputed.csv for OS-Ken (default: next to --osken)")
+                    help="per-run CPU file for OS-Ken (optional; default: looked up next to --osken)")
     ap.add_argument("--min-success", type=float, default=0.98)
     ap.add_argument("--reps", type=int, default=10)
     ap.add_argument("--fps-n", default="64",

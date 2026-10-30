@@ -1,0 +1,57 @@
+== Source ==
+results_v4/summary/summary.csv, controller = ryu, 400 runs
+latency: proc_latency_p50_ms / proc_latency_p95_ms (handler time)
+CPU: cpu_percent_traffic (traffic_launch start -> client_drain end)
+code_hash values in the summary (rows per controller): 1
+  b5ac8d4b7a5dac7316dfaff9e8aa07ecc7e55286fc7065d4b1335e38ae75091c: {'onos': 400, 'osken': 400, 'ryu': 400}
+
+== Validation (Ryu) ==
+min success_rate: 0.9980
+max achieved-FPS deviation: 0.20%
+
+== Delivered throughput (Mbps), mean by topology x FPS ==
+flows_per_sec    25     50     100     200
+topology                                  
+fattree        127.1  251.9  508.5  1036.8
+star           128.5  254.2  512.5  1036.3
+
+== Packet-In rate, mean by topology x FPS ==
+flows_per_sec     25      50      100     200
+topology                                     
+fattree        111.10  142.71  163.11  170.06
+star            62.39   84.70   93.63   93.56
+tree/star Packet-In ratio by FPS: {25: 1.78, 50: 1.68, 100: 1.74, 200: 1.82}
+
+== proc_latency_p50_ms, mean by topology x FPS ==
+flows_per_sec    25     50     100    200
+topology                                 
+fattree        0.144  0.144  0.143  0.138
+star           0.156  0.154  0.155  0.154
+
+== proc_latency_p95_ms, mean by topology x FPS ==
+flows_per_sec    25     50     100    200
+topology                                 
+fattree        0.313  0.303  0.428  0.606
+star           0.316  0.307  0.344  0.433
+
+== p95 by topology x N (mean over FPS and reps) ==
+n_hosts      4      8      16     32     64
+topology                                   
+fattree   0.372  0.309  0.290  0.355  0.736
+star      0.400  0.310  0.317  0.328  0.395
+fattree: N=4 -> N=64 growth 2.0x
+star: N=4 -> N=64 growth 1.0x
+star/tree p95 ratio at N=64: 0.54x
+
+== Controller CPU (%) ==
+max per-run mean CPU: 31.17
+n_hosts     4     8     16    32     64
+topology                               
+fattree   0.28  0.78  2.62  8.36  20.44
+star      0.18  0.56  1.91  6.09  13.13
+
+== For reference: avg_cpu_percent (measure start -> last monitor sample), by topology x N ==
+n_hosts     4     8     16    32     64
+topology                               
+fattree   0.44  1.06  2.70  7.01  13.05
+star      0.25  0.59  1.79  4.54   8.76

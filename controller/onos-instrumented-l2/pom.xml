@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ONOS port of controller/ryu_instrumented_switch.py (docs/ADAPTER.md Part 1).
+  Build: mvn -q -o package   (first build without -o downloads dependencies)
+  Output: target/instrumented-l2-1.0.0.oar
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.onosproject</groupId>
+        <artifactId>onos-dependencies</artifactId>
+        <version>2.7.0</version>
+    </parent>
+
+    <groupId>org.sdntestbed</groupId>
+    <artifactId>instrumented-l2</artifactId>
+    <version>1.0.0</version>
+    <packaging>bundle</packaging>
+
+    <description>Instrumented reactive L2 learning switch (SDN testbed)</description>
+
+    <properties>
+        <onos.app.name>org.sdntestbed.instrumentedl2</onos.app.name>
+        <onos.app.title>Instrumented L2 switch</onos.app.title>
+        <onos.app.origin>SDN controller benchmarking testbed</onos.app.origin>
+        <onos.app.category>Traffic Engineering</onos.app.category>
+        <onos.app.url>https://github.com/</onos.app.url>
+        <onos.app.readme>Reactive MAC-learning switch with per-Packet-In timing (docs/ADAPTER.md).</onos.app.readme>
+        <onos.app.requires>org.onosproject.openflow-base</onos.app.requires>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.onosproject</groupId>
+            <artifactId>onos-api</artifactId>
+            <version>${onos.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.osgi</groupId>
+            <artifactId>org.osgi.service.component.annotations</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.onosproject</groupId>
+                <artifactId>onos-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
